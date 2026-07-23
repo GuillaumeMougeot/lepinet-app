@@ -28,6 +28,11 @@
 
     <p id="status" class="status"></p>
 
+    <section id="install" class="install" hidden>
+      <button id="install-btn" class="install-btn" hidden>⊕ Install app for offline use</button>
+      <p id="install-help" class="install-help"></p>
+    </section>
+
     <footer class="home-foot">
       <a href="https://github.com/GuillaumeMougeot/lepinet-app" target="_blank" rel="noopener">
         Learn more &amp; give feedback →</a>
@@ -45,6 +50,10 @@
   </main>
 
   <script type="module" src="./src/app.js"></script>
+  <script type="module">
+    import { initInstall } from './src/install.js';
+    initInstall();
+  </script>
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));

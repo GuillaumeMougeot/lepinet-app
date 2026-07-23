@@ -51,6 +51,17 @@ h1 { font-size: 2rem; margin: 0 0 8px; letter-spacing: -0.02em; }
 
 .status { text-align: center; color: var(--muted); min-height: 1.4em; margin: 12px 0; }
 
+.install { text-align: center; margin: 4px 0 8px; }
+.install-btn {
+  border: 1px solid var(--accent); background: transparent; color: var(--accent);
+  border-radius: 12px; padding: 12px 18px; font-size: .95rem; font-weight: 600; cursor: pointer;
+}
+.install-btn:active { background: var(--border); }
+.install-help {
+  color: var(--muted); font-size: .85rem; max-width: 32ch; margin: 8px auto 0; line-height: 1.5;
+}
+.install-help em { color: var(--fg); font-style: normal; font-weight: 600; }
+
 .home-foot { margin-top: auto; text-align: center; }
 .home-foot a { color: var(--accent); text-decoration: none; }
 .disclaimer { color: var(--muted); font-size: .8rem; margin-top: 12px; }
