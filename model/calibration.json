@@ -1,0 +1,22 @@
+{
+  "method": "temperature scaling (Guo et al. 2017), fitted per level on the validation fold",
+  "fitted_on": "fold 1",
+  "n_images": 15000,
+  "temperatures": {
+    "species": {
+      "temperature": 0.7201232687693796,
+      "val_nll": 0.36156654357910156,
+      "val_nll_uncalibrated": 0.4374423325061798
+    },
+    "genus": {
+      "temperature": 0.7468794808272429,
+      "val_nll": 0.18177610635757446,
+      "val_nll_uncalibrated": 0.23349758982658386
+    },
+    "family": {
+      "temperature": 0.5785551186413599,
+      "val_nll": 0.04098338633775711,
+      "val_nll_uncalibrated": 0.08173120021820068
+    }
+  }
+}

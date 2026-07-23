@@ -1,0 +1,134 @@
+{
+  "note": "Apply temperature from calibration.json, then grey any level whose calibrated top-1 probability is below its threshold. Thresholds are precision-targeted, not round numbers -- see journal/2026-07-lepi-app-claude.md D2. | Active thresholds target 0.95 precision.",
+  "path": "marginal (genus/family derived from species; see dev/042)",
+  "levels": {
+    "species": {
+      "threshold": 0.5110716223716736,
+      "target_precision": 0.95,
+      "fitted_on": "fold 1",
+      "achieved_on_test": 0.9445940201218648,
+      "coverage_on_test": 0.9409333333333333
+    },
+    "genus": {
+      "threshold": 0.04407960921525955,
+      "target_precision": 0.95,
+      "fitted_on": "fold 1",
+      "achieved_on_test": 0.9613281770902787,
+      "coverage_on_test": 0.9998666666666667
+    },
+    "family": {
+      "threshold": 0.18968871235847473,
+      "target_precision": 0.95,
+      "fitted_on": "fold 1",
+      "achieved_on_test": 0.9913327555170345,
+      "coverage_on_test": 0.9999333333333333
+    }
+  },
+  "sweep": [
+    {
+      "level": "species",
+      "target": 0.8,
+      "threshold": 0.04018311947584152,
+      "test_precision": 0.9107940529368624,
+      "test_coverage": 0.9999333333333333
+    },
+    {
+      "level": "species",
+      "target": 0.9,
+      "threshold": 0.04018311947584152,
+      "test_precision": 0.9107940529368624,
+      "test_coverage": 0.9999333333333333
+    },
+    {
+      "level": "species",
+      "target": 0.95,
+      "threshold": 0.5110716223716736,
+      "test_precision": 0.9445940201218648,
+      "test_coverage": 0.9409333333333333
+    },
+    {
+      "level": "species",
+      "target": 0.98,
+      "threshold": 0.7890444993972778,
+      "test_precision": 0.980275974025974,
+      "test_coverage": 0.8213333333333334
+    },
+    {
+      "level": "species",
+      "target": 0.99,
+      "threshold": 0.9150099754333496,
+      "test_precision": 0.9907132243684993,
+      "test_coverage": 0.7178666666666667
+    },
+    {
+      "level": "genus",
+      "target": 0.8,
+      "threshold": 0.04407960921525955,
+      "test_precision": 0.9613281770902787,
+      "test_coverage": 0.9998666666666667
+    },
+    {
+      "level": "genus",
+      "target": 0.9,
+      "threshold": 0.04407960921525955,
+      "test_precision": 0.9613281770902787,
+      "test_coverage": 0.9998666666666667
+    },
+    {
+      "level": "genus",
+      "target": 0.95,
+      "threshold": 0.04407960921525955,
+      "test_precision": 0.9613281770902787,
+      "test_coverage": 0.9998666666666667
+    },
+    {
+      "level": "genus",
+      "target": 0.98,
+      "threshold": 0.5820868611335754,
+      "test_precision": 0.9822673014558753,
+      "test_coverage": 0.9662
+    },
+    {
+      "level": "genus",
+      "target": 0.99,
+      "threshold": 0.8032335638999939,
+      "test_precision": 0.9908564897492678,
+      "test_coverage": 0.9332666666666667
+    },
+    {
+      "level": "family",
+      "target": 0.8,
+      "threshold": 0.18968871235847473,
+      "test_precision": 0.9913327555170345,
+      "test_coverage": 0.9999333333333333
+    },
+    {
+      "level": "family",
+      "target": 0.9,
+      "threshold": 0.18968871235847473,
+      "test_precision": 0.9913327555170345,
+      "test_coverage": 0.9999333333333333
+    },
+    {
+      "level": "family",
+      "target": 0.95,
+      "threshold": 0.18968871235847473,
+      "test_precision": 0.9913327555170345,
+      "test_coverage": 0.9999333333333333
+    },
+    {
+      "level": "family",
+      "target": 0.98,
+      "threshold": 0.18968871235847473,
+      "test_precision": 0.9913327555170345,
+      "test_coverage": 0.9999333333333333
+    },
+    {
+      "level": "family",
+      "target": 0.99,
+      "threshold": 0.18968871235847473,
+      "test_precision": 0.9913327555170345,
+      "test_coverage": 0.9999333333333333
+    }
+  ]
+}
