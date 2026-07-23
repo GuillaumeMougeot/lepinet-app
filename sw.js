@@ -8,7 +8,7 @@
 // cost of offline inference, and it is why they live behind an explicit install step the user
 // triggers by adding the app to their home screen.
 
-const CACHE = 'lepinet-v7';
+const CACHE = 'lepinet-v8';
 
 // Precache ONLY the small shell (HTML/JS/CSS/config, all a few KB). The heavy assets — the model
 // (~15 MB) and the ORT .wasm (~12–25 MB) — are deliberately NOT in the install set: a single
