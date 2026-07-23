@@ -8,7 +8,7 @@
 // cost of offline inference, and it is why they live behind an explicit install step the user
 // triggers by adding the app to their home screen.
 
-const CACHE = 'lepinet-v4';
+const CACHE = 'lepinet-v5';
 
 // Precache the shell + model + the loader mjs (tiny). The big .wasm variants (~59 MB across
 // jsep/plain/asyncify) are NOT precached — ORT loads exactly one at runtime depending on the
