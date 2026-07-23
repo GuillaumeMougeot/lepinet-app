@@ -20,11 +20,19 @@
         Runs entirely on your device; your photos never leave your phone.</p>
     </header>
 
-    <button id="capture-btn" class="capture" disabled>
-      <span class="capture-icon" aria-hidden="true">📷</span>
-      <span>Take or choose a photo</span>
-    </button>
-    <input id="file-input" type="file" accept="image/*" capture="environment" hidden />
+    <div class="capture-row">
+      <button id="camera-btn" class="capture" disabled>
+        <span class="capture-icon" aria-hidden="true">📷</span>
+        <span>Camera</span>
+      </button>
+      <button id="gallery-btn" class="capture capture-alt" disabled>
+        <span class="capture-icon" aria-hidden="true">🖼️</span>
+        <span>Gallery</span>
+      </button>
+    </div>
+    <!-- Two inputs: `capture` forces the camera; its absence opens the photo library. -->
+    <input id="camera-input" type="file" accept="image/*" capture="environment" hidden />
+    <input id="gallery-input" type="file" accept="image/*" hidden />
 
     <p id="status" class="status"></p>
 

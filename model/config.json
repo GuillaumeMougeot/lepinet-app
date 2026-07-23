@@ -1,0 +1,13 @@
+{
+  "name": "EfficientNetV2-B2 · Lepidoptera v1",
+  "model": "model.onnx",
+  "fallback": "https://github.com/GuillaumeMougeot/lepinet/releases/download/model-v1-effnetv2b2/model.onnx",
+  "taxonomy": "taxonomy.json",
+  "names": "names.json",
+  "calibration": "calibration.json",
+  "thresholds": "thresholds.json",
+  "imageSize": 256,
+  "inputName": "image",
+  "outputs": { "species": "logits_species", "genus": "logits_genus", "family": "logits_family" },
+  "gbifBase": "https://www.gbif.org/species/"
+}

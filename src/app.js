@@ -8,23 +8,28 @@ const el = (id) => document.getElementById(id);
 const home = el('home');
 const result = el('result');
 const status = el('status');
-const fileInput = el('file-input');
 
 const LEVEL_LABEL = { species: 'Species', genus: 'Genus', family: 'Family' };
 
 // Kick off model loading immediately so the first capture isn't the slow one.
 let loadPromise = loadModel('./model/', (msg) => { status.textContent = msg; })
-  .then(() => { status.textContent = ''; el('capture-btn').disabled = false; })
+  .then(() => {
+    status.textContent = '';
+    el('camera-btn').disabled = false;
+    el('gallery-btn').disabled = false;
+  })
   .catch((e) => { status.textContent = 'Model failed to load: ' + e.message; });
 
-el('capture-btn').addEventListener('click', () => fileInput.click());
-fileInput.addEventListener('change', onFile);
+el('camera-btn').addEventListener('click', () => el('camera-input').click());
+el('gallery-btn').addEventListener('click', () => el('gallery-input').click());
+el('camera-input').addEventListener('change', onFile);
+el('gallery-input').addEventListener('change', onFile);
 el('back-btn').addEventListener('click', showHome);
 window.addEventListener('popstate', showHome);
 
 async function onFile(ev) {
   const file = ev.target.files?.[0];
-  fileInput.value = ''; // allow re-picking the same file
+  ev.target.value = ''; // allow re-picking the same file
   if (!file) return;
   await handleImage(file);
 }
@@ -94,16 +99,18 @@ function rowFor(p) {
   label.textContent = LEVEL_LABEL[p.level];
   const name = document.createElement('div');
   name.className = 'tax-name';
-  name.textContent = p.key; // GBIF taxon key; the app is key-based, names resolve via GBIF link
-  name.title = 'Tap the link icon to open the GBIF page';
+  const display = p.name || p.key; // scientific name if the bundle ships one, else the GBIF key
+  name.textContent = display;
+  if (p.level !== 'family') name.style.fontStyle = 'italic'; // binomials/genera are italicised
+  name.title = display;
   mid.append(label, name);
 
   const actions = document.createElement('div');
   actions.className = 'tax-actions';
   const copy = document.createElement('button');
-  copy.className = 'icon-btn'; copy.title = 'Copy';
+  copy.className = 'icon-btn'; copy.title = 'Copy name';
   copy.textContent = '⧉';
-  copy.addEventListener('click', () => navigator.clipboard?.writeText(p.key));
+  copy.addEventListener('click', () => navigator.clipboard?.writeText(display));
   const link = document.createElement('a');
   link.className = 'icon-btn'; link.title = 'Open GBIF page';
   link.href = gbifUrl(p.key); link.target = '_blank'; link.rel = 'noopener';

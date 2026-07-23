@@ -8,7 +8,7 @@
 // cost of offline inference, and it is why they live behind an explicit install step the user
 // triggers by adding the app to their home screen.
 
-const CACHE = 'lepinet-v5';
+const CACHE = 'lepinet-v6';
 
 // Precache the shell + model + the loader mjs (tiny). The big .wasm variants (~59 MB across
 // jsep/plain/asyncify) are NOT precached — ORT loads exactly one at runtime depending on the
@@ -29,8 +29,10 @@ const SHELL = [
   './ort/ort-wasm-simd-threaded.mjs',
   './ort/ort-wasm-simd-threaded.jsep.mjs',
   './ort/ort-wasm-simd-threaded.asyncify.mjs',
+  './model/config.json',
   './model/model.onnx',
   './model/taxonomy.json',
+  './model/names.json',
 ];
 
 self.addEventListener('install', (e) => {

@@ -1,130 +1,136 @@
 // Inference core for lepinet-app.
 //
-// Loads the ONNX model + taxonomy, preprocesses an image the way the training pipeline's
-// validation transform does, runs the model, and derives a consistent species/genus/family
-// prediction. Everything here runs on-device; no image ever leaves the phone.
+// Loads a model bundle described by model/config.json, preprocesses an image the way the
+// training pipeline's validation transform does, runs the model, and derives a consistent
+// species/genus/family prediction. Everything runs on-device; no image leaves the phone.
 //
-// Two decisions come straight from the lepinet compression experiments
-// (lepinet/journal/2026-07-lepi-app-compression.md):
-//   * Preprocessing = shorter-side resize to 256 + center crop. dev/041 measured that this
-//     matches fastai's validation pipeline to within 0.1 pp; the resampling kernel is a
-//     non-issue, only aspect ratio matters, so a plain canvas drawImage is fine.
-//   * Genus and family are *marginalized* from the species posterior, not read from the model's
-//     own genus/family heads. dev/042 proved this is both more accurate (+0.7 / +3.1 pp) and
-//     consistent by construction — the three levels can never contradict each other, which is
-//     exactly what the stacked UI needs.
+// The bundle is model-agnostic: point config.json at a different model.onnx + taxonomy.json and
+// the app runs it unchanged (see DEVELOPER.md). Two decisions come from the lepinet compression
+// experiments (lepinet/journal/2026-07-lepi-app-compression.md):
+//   * Preprocessing = shorter-side resize to `imageSize` + center crop (dev/041: matches fastai
+//     validation within 0.1 pp; only aspect ratio matters, so a plain canvas draw is fine).
+//   * Genus/family are marginalized from the species posterior (dev/042: more accurate AND
+//     consistent), so the three levels can never contradict each other.
 //
-// The model outputs raw logits for all three levels; we use the species logits and roll them up.
+// The model must emit raw logits for each level and bake its own input normalization into the
+// graph (input = RGB [1,3,S,S] in [0,1]).
 
 import * as ort from '../ort/ort.webgpu.mjs';
 
-// Where ORT fetches its wasm/loader sidecars from (we vendor all variants under ort/).
 ort.env.wasm.wasmPaths = new URL('../ort/', import.meta.url).href;
-// GitHub Pages is not cross-origin isolated (no COOP/COEP), so SharedArrayBuffer/threads are
-// unavailable — run single-threaded rather than letting ORT probe and fail into a bad state.
+// GitHub Pages is not cross-origin isolated (no COOP/COEP) → no SharedArrayBuffer/threads.
 ort.env.wasm.numThreads = 1;
 
-const IMG_SIZE = 256;
-const MEAN = [0.485, 0.456, 0.406]; // baked into the graph too, but kept for reference
-const STD = [0.229, 0.224, 0.225];
-
 let session = null;
+let cfg = null;
 let taxonomy = null;
-let calibration = null; // { temperatures: {species,genus,family} } or null
-let thresholds = null;  // { species, genus, family } or null
+let names = null;         // { species:[…], genus:[…], family:[…] } aligned to vocab order, or null
+let calibration = null;   // { temperatures: {…} } or null
+let thresholds = null;    // { species, genus, family } or null
 
-/** Load model + sidecars. Idempotent. `base` is the model dir URL. */
+const LEVELS = ['species', 'genus', 'family'];
+
+async function getJSON(url) {
+  return fetch(url).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+}
+
+/** Load the bundle described by `<base>config.json`. Idempotent. */
 export async function loadModel(base = './model/', onProgress = () => {}) {
   if (session) return;
-  onProgress('Loading taxonomy…');
-  taxonomy = await fetch(base + 'taxonomy.json').then((r) => r.json());
-  // Optional sidecars — the app degrades gracefully if a bundle ships without them.
-  calibration = await fetch(base + 'calibration.json').then((r) => r.ok ? r.json() : null).catch(() => null);
-  const thr = await fetch(base + 'thresholds.json').then((r) => r.ok ? r.json() : null).catch(() => null);
-  if (thr && thr.levels) {
-    thresholds = {
-      species: thr.levels.species?.threshold ?? null,
-      genus: thr.levels.genus?.threshold ?? null,
-      family: thr.levels.family?.threshold ?? null,
-    };
+  onProgress('Loading bundle…');
+  cfg = (await getJSON(base + 'config.json')) || {};
+  cfg.imageSize = cfg.imageSize || 256;
+  cfg.inputName = cfg.inputName || 'image';
+  cfg.outputs = cfg.outputs || { species: 'logits_species', genus: 'logits_genus', family: 'logits_family' };
+  cfg.gbifBase = cfg.gbifBase || 'https://www.gbif.org/species/';
+
+  taxonomy = await getJSON(base + (cfg.taxonomy || 'taxonomy.json'));
+  if (!taxonomy) throw new Error('taxonomy.json missing or invalid');
+  const namesDoc = cfg.names ? await getJSON(base + cfg.names) : null;
+  names = namesDoc?.names || null;
+  calibration = cfg.calibration ? await getJSON(base + cfg.calibration) : null;
+  const thr = cfg.thresholds ? await getJSON(base + cfg.thresholds) : null;
+  if (thr?.levels) {
+    thresholds = Object.fromEntries(LEVELS.map((l) => [l, thr.levels[l]?.threshold ?? null]));
   }
 
   onProgress('Loading model…');
-  // Prefer WebGPU (fast on capable Android/desktop), but fall back to WASM-only if anything in
-  // the WebGPU init path fails — some browsers report navigator.gpu yet fail to create a
-  // context, and a poisoned WebGPU init used to take the WASM fallback down with it. Trying
-  // WASM-only as a second attempt makes the app work even when WebGPU is broken (iOS Safari).
-  const attempts = [];
-  if (navigator.gpu) attempts.push(['webgpu', 'wasm']);
-  attempts.push(['wasm']);
-  let lastErr;
-  for (const executionProviders of attempts) {
-    try {
-      session = await ort.InferenceSession.create(base + 'model.onnx', {
-        executionProviders,
-        graphOptimizationLevel: 'all',
-      });
-      break;
-    } catch (err) {
-      lastErr = err;
-      session = null;
-    }
-  }
-  if (!session) throw lastErr;
+  // Primary model (config.model) first; if it can't run on this device, fall back to
+  // config.fallback (e.g. the fp32 model on the GitHub release — larger but universally
+  // supported). Within each, prefer WebGPU then WASM-only.
+  const modelUrls = [base + (cfg.model || 'model.onnx'), cfg.fallback].filter(Boolean);
+  session = await createSession(modelUrls, onProgress);
 
   onProgress('Warming up…');
   await warmup(); // pay the first-inference graph-init cost now, not on the user's first photo
   onProgress('Ready');
 }
 
+async function createSession(modelUrls, onProgress) {
+  let lastErr;
+  for (let i = 0; i < modelUrls.length; i++) {
+    if (i > 0) onProgress('Retrying with fallback model…');
+    // Prefer WebGPU (fast) but fall back to WASM-only — some browsers report navigator.gpu yet
+    // fail to create a context, and QDQ-quantized ops may not run on the GPU backend.
+    const attempts = [];
+    if (navigator.gpu) attempts.push(['webgpu', 'wasm']);
+    attempts.push(['wasm']);
+    for (const executionProviders of attempts) {
+      try {
+        return await ort.InferenceSession.create(modelUrls[i], {
+          executionProviders, graphOptimizationLevel: 'all',
+        });
+      } catch (err) { lastErr = err; }
+    }
+  }
+  throw lastErr;
+}
+
 async function warmup() {
-  const dummy = new ort.Tensor('float32', new Float32Array(3 * IMG_SIZE * IMG_SIZE), [1, 3, IMG_SIZE, IMG_SIZE]);
-  await session.run({ image: dummy });
+  const S = cfg.imageSize;
+  const dummy = new ort.Tensor('float32', new Float32Array(3 * S * S), [1, 3, S, S]);
+  await session.run({ [cfg.inputName]: dummy });
 }
 
 /**
- * Preprocess an ImageBitmap/HTMLImageElement to a [1,3,256,256] float tensor in [0,1], RGB,
- * via shorter-side resize + center crop (see module header). Returns { tensor, previewCanvas }.
+ * Preprocess an ImageBitmap/HTMLImageElement to a [1,3,S,S] float tensor in [0,1] RGB, via
+ * shorter-side resize + center crop. Returns { tensor, previewCanvas }.
  */
 export function preprocess(img) {
+  const S = cfg.imageSize;
   const w = img.width, h = img.height;
-  const scale = IMG_SIZE / Math.min(w, h);
-  const nw = Math.max(IMG_SIZE, Math.round(w * scale));
-  const nh = Math.max(IMG_SIZE, Math.round(h * scale));
+  const scale = S / Math.min(w, h);
+  const nw = Math.max(S, Math.round(w * scale));
+  const nh = Math.max(S, Math.round(h * scale));
 
   const c = document.createElement('canvas');
-  c.width = IMG_SIZE; c.height = IMG_SIZE;
+  c.width = S; c.height = S;
   const ctx = c.getContext('2d', { willReadFrequently: true });
   ctx.imageSmoothingQuality = 'high';
-  // Draw the resized image and center-crop in one drawImage: source is the full image, dest is
-  // offset so the IMG_SIZE×IMG_SIZE window sits at the center of the nw×nh resized image.
-  const dx = (IMG_SIZE - nw) / 2, dy = (IMG_SIZE - nh) / 2;
-  ctx.drawImage(img, dx, dy, nw, nh);
+  ctx.drawImage(img, (S - nw) / 2, (S - nh) / 2, nw, nh); // resize + center-crop in one draw
 
-  const { data } = ctx.getImageData(0, 0, IMG_SIZE, IMG_SIZE);
-  const chw = new Float32Array(3 * IMG_SIZE * IMG_SIZE);
-  const plane = IMG_SIZE * IMG_SIZE;
+  const { data } = ctx.getImageData(0, 0, S, S);
+  const chw = new Float32Array(3 * S * S);
+  const plane = S * S;
   for (let i = 0; i < plane; i++) {
-    chw[i] = data[i * 4] / 255;               // R
-    chw[plane + i] = data[i * 4 + 1] / 255;    // G
-    chw[2 * plane + i] = data[i * 4 + 2] / 255; // B
+    chw[i] = data[i * 4] / 255;
+    chw[plane + i] = data[i * 4 + 1] / 255;
+    chw[2 * plane + i] = data[i * 4 + 2] / 255;
   }
-  return { tensor: new ort.Tensor('float32', chw, [1, 3, IMG_SIZE, IMG_SIZE]), previewCanvas: c };
+  return { tensor: new ort.Tensor('float32', chw, [1, 3, S, S]), previewCanvas: c };
 }
 
 function softmaxLog(logits) {
   let m = -Infinity;
   for (const v of logits) if (v > m) m = v;
   let sum = 0;
-  const exp = new Float64Array(logits.length);
-  for (let i = 0; i < logits.length; i++) { exp[i] = Math.exp(logits[i] - m); sum += exp[i]; }
+  for (let i = 0; i < logits.length; i++) sum += Math.exp(logits[i] - m);
   const logsum = Math.log(sum) + m;
   const logp = new Float64Array(logits.length);
   for (let i = 0; i < logits.length; i++) logp[i] = logits[i] - logsum;
-  return logp; // log-probabilities
+  return logp;
 }
 
-/** log P(parent) = logsumexp over children, given a child→parent index array. */
 function marginalizeLog(childLogP, childToParent, nParents) {
   const maxes = new Float64Array(nParents).fill(-Infinity);
   for (let i = 0; i < childLogP.length; i++) {
@@ -132,10 +138,7 @@ function marginalizeLog(childLogP, childToParent, nParents) {
     if (childLogP[i] > maxes[p]) maxes[p] = childLogP[i];
   }
   const sums = new Float64Array(nParents);
-  for (let i = 0; i < childLogP.length; i++) {
-    const p = childToParent[i];
-    sums[p] += Math.exp(childLogP[i] - maxes[p]);
-  }
+  for (let i = 0; i < childLogP.length; i++) sums[childToParent[i]] += Math.exp(childLogP[i] - maxes[childToParent[i]]);
   const out = new Float64Array(nParents);
   for (let p = 0; p < nParents; p++) out[p] = Math.log(sums[p]) + maxes[p];
   return out;
@@ -147,11 +150,8 @@ function argmax(arr) {
   return bi;
 }
 
-/** Apply a temperature to log-probs and return the max as a calibrated probability. */
 function calibratedTopProb(logp, idx, temperature) {
   if (!temperature || temperature === 1) return Math.exp(logp[idx]);
-  // Re-softmax the underlying logits at temperature T. logp are log-probs, i.e. logits shifted
-  // by a constant; dividing by T and renormalizing is the standard temperature rescaling.
   let m = -Infinity;
   for (const v of logp) if (v / temperature > m) m = v / temperature;
   let sum = 0;
@@ -160,42 +160,34 @@ function calibratedTopProb(logp, idx, temperature) {
 }
 
 /**
- * Run the model on a preprocessed tensor and return the consistent 3-level prediction:
- *   [{ level, key, prob, aboveThreshold }, …] finest→coarsest, plus the raw species logp.
+ * Run the model and return the consistent 3-level prediction, finest→coarsest:
+ *   [{ level, key, name, prob, aboveThreshold }, …]
  */
 export async function predict(tensor) {
-  const out = await session.run({ image: tensor });
-  const speciesLogits = out.logits_species.data; // Float32Array, length = #species
+  const out = await session.run({ [cfg.inputName]: tensor });
+  const speciesLogits = out[cfg.outputs.species].data;
 
   const spLogP = softmaxLog(speciesLogits);
   const p = taxonomy.parents;
-  const nGenus = taxonomy.vocabs.genus.length;
-  const nFamily = taxonomy.vocabs.family.length;
-  const gnLogP = marginalizeLog(spLogP, p.species_to_genus, nGenus);
-  const fmLogP = marginalizeLog(gnLogP, p.genus_to_family, nFamily);
+  const gnLogP = marginalizeLog(spLogP, p.species_to_genus, taxonomy.vocabs.genus.length);
+  const fmLogP = marginalizeLog(gnLogP, p.genus_to_family, taxonomy.vocabs.family.length);
+  const perLevel = { species: spLogP, genus: gnLogP, family: fmLogP };
 
-  const levels = [
-    { name: 'species', logp: spLogP },
-    { name: 'genus', logp: gnLogP },
-    { name: 'family', logp: fmLogP },
-  ];
-
-  return levels.map(({ name, logp }) => {
+  return LEVELS.map((level) => {
+    const logp = perLevel[level];
     const idx = argmax(logp);
-    const T = calibration?.temperatures?.[name]?.temperature ?? 1;
-    const prob = calibratedTopProb(logp, idx, T);
-    const thr = thresholds?.[name] ?? null;
+    const T = calibration?.temperatures?.[level]?.temperature ?? 1;
+    const key = taxonomy.vocabs[level][idx];
+    const name = names?.[level]?.[idx] || '';
+    const thr = thresholds?.[level] ?? null;
     return {
-      level: name,
-      key: taxonomy.vocabs[name][idx],
-      prob,
-      aboveThreshold: thr == null ? true : prob >= thr,
+      level, key, name,
+      prob: calibratedTopProb(logp, idx, T),
+      aboveThreshold: thr == null ? true : calibratedTopProb(logp, idx, T) >= thr,
     };
   });
 }
 
-export function gbifUrl(key) {
-  return `https://www.gbif.org/species/${key}`;
-}
-
+export function gbifUrl(key) { return (cfg?.gbifBase || 'https://www.gbif.org/species/') + key; }
+export function modelName() { return cfg?.name || ''; }
 export function isReady() { return session != null; }
