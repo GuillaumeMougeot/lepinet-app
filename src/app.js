@@ -11,6 +11,13 @@ const status = el('status');
 
 const LEVEL_LABEL = { species: 'Species', genus: 'Genus', family: 'Family' };
 
+function errText(e) {
+  // ORT sometimes throws non-Error objects (or numbers), so `.message` is undefined; surface
+  // whatever detail exists rather than the useless "undefined".
+  if (e == null) return 'unknown error';
+  return e.message || e.toString?.() || (typeof e === 'string' ? e : JSON.stringify(e));
+}
+
 // Kick off model loading immediately so the first capture isn't the slow one.
 let loadPromise = loadModel('./model/', (msg) => { status.textContent = msg; })
   .then(() => {
@@ -18,7 +25,10 @@ let loadPromise = loadModel('./model/', (msg) => { status.textContent = msg; })
     el('camera-btn').disabled = false;
     el('gallery-btn').disabled = false;
   })
-  .catch((e) => { status.textContent = 'Model failed to load: ' + e.message; });
+  .catch((e) => {
+    console.error('Model load failed:', e);
+    status.textContent = 'Model failed to load: ' + errText(e);
+  });
 
 el('camera-btn').addEventListener('click', () => el('camera-input').click());
 el('gallery-btn').addEventListener('click', () => el('gallery-input').click());

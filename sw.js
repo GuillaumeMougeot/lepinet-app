@@ -8,12 +8,14 @@
 // cost of offline inference, and it is why they live behind an explicit install step the user
 // triggers by adding the app to their home screen.
 
-const CACHE = 'lepinet-v6';
+const CACHE = 'lepinet-v7';
 
-// Precache the shell + model + the loader mjs (tiny). The big .wasm variants (~59 MB across
-// jsep/plain/asyncify) are NOT precached — ORT loads exactly one at runtime depending on the
-// device, and the fetch handler below caches whatever it fetches, so offline works after the
-// first successful run without forcing a 70 MB install.
+// Precache ONLY the small shell (HTML/JS/CSS/config, all a few KB). The heavy assets — the model
+// (~15 MB) and the ORT .wasm (~12–25 MB) — are deliberately NOT in the install set: a single
+// flaky download would reject the whole `addAll` and leave the service worker stuck on a stale
+// version (that is what broke the app after a cache bump). Instead the fetch handler caches those
+// big files on first successful load, so the app becomes fully offline after one online run
+// without a fragile 70 MB install step.
 const SHELL = [
   './',
   './index.html',
@@ -25,26 +27,18 @@ const SHELL = [
   './assets/icon.svg',
   './assets/icon-192.png',
   './assets/icon-512.png',
-  './ort/ort.webgpu.mjs',
-  './ort/ort-wasm-simd-threaded.mjs',
-  './ort/ort-wasm-simd-threaded.jsep.mjs',
-  './ort/ort-wasm-simd-threaded.asyncify.mjs',
   './model/config.json',
-  './model/model.onnx',
   './model/taxonomy.json',
   './model/names.json',
 ];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
-    caches.open(CACHE).then((c) =>
-      // Sidecars (calibration/thresholds) are optional — don't fail the whole install if absent.
-      Promise.all([
-        c.addAll(SHELL),
-        c.add('./model/calibration.json').catch(() => {}),
-        c.add('./model/thresholds.json').catch(() => {}),
-      ])
-    ).then(() => self.skipWaiting())
+    // Cache shell items individually so one 404/hiccup can't fail the whole install and wedge
+    // the SW; the big model + wasm are picked up by the fetch handler on first load.
+    caches.open(CACHE)
+      .then((c) => Promise.all(SHELL.map((u) => c.add(u).catch((err) => console.warn('precache skip', u, err)))))
+      .then(() => self.skipWaiting())
   );
 });
 
