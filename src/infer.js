@@ -18,7 +18,11 @@
 
 import * as ort from '../ort/ort.webgpu.mjs';
 
+// Where ORT fetches its wasm/loader sidecars from (we vendor all variants under ort/).
 ort.env.wasm.wasmPaths = new URL('../ort/', import.meta.url).href;
+// GitHub Pages is not cross-origin isolated (no COOP/COEP), so SharedArrayBuffer/threads are
+// unavailable — run single-threaded rather than letting ORT probe and fail into a bad state.
+ort.env.wasm.numThreads = 1;
 
 const IMG_SIZE = 256;
 const MEAN = [0.485, 0.456, 0.406]; // baked into the graph too, but kept for reference
@@ -46,14 +50,27 @@ export async function loadModel(base = './model/', onProgress = () => {}) {
   }
 
   onProgress('Loading model…');
-  // WebGPU where available (fast), WASM-SIMD everywhere else. iOS Safari falls back to WASM.
-  const providers = [];
-  if (navigator.gpu) providers.push('webgpu');
-  providers.push('wasm');
-  session = await ort.InferenceSession.create(base + 'model.onnx', {
-    executionProviders: providers,
-    graphOptimizationLevel: 'all',
-  });
+  // Prefer WebGPU (fast on capable Android/desktop), but fall back to WASM-only if anything in
+  // the WebGPU init path fails — some browsers report navigator.gpu yet fail to create a
+  // context, and a poisoned WebGPU init used to take the WASM fallback down with it. Trying
+  // WASM-only as a second attempt makes the app work even when WebGPU is broken (iOS Safari).
+  const attempts = [];
+  if (navigator.gpu) attempts.push(['webgpu', 'wasm']);
+  attempts.push(['wasm']);
+  let lastErr;
+  for (const executionProviders of attempts) {
+    try {
+      session = await ort.InferenceSession.create(base + 'model.onnx', {
+        executionProviders,
+        graphOptimizationLevel: 'all',
+      });
+      break;
+    } catch (err) {
+      lastErr = err;
+      session = null;
+    }
+  }
+  if (!session) throw lastErr;
 
   onProgress('Warming up…');
   await warmup(); // pay the first-inference graph-init cost now, not on the user's first photo

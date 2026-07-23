@@ -8,8 +8,12 @@
 // cost of offline inference, and it is why they live behind an explicit install step the user
 // triggers by adding the app to their home screen.
 
-const CACHE = 'lepinet-v1';
+const CACHE = 'lepinet-v2';
 
+// Precache the shell + model + the loader mjs (tiny). The big .wasm variants (~59 MB across
+// jsep/plain/asyncify) are NOT precached — ORT loads exactly one at runtime depending on the
+// device, and the fetch handler below caches whatever it fetches, so offline works after the
+// first successful run without forcing a 70 MB install.
 const SHELL = [
   './',
   './index.html',
@@ -21,8 +25,9 @@ const SHELL = [
   './assets/icon-192.png',
   './assets/icon-512.png',
   './ort/ort.webgpu.mjs',
+  './ort/ort-wasm-simd-threaded.mjs',
   './ort/ort-wasm-simd-threaded.jsep.mjs',
-  './ort/ort-wasm-simd-threaded.jsep.wasm',
+  './ort/ort-wasm-simd-threaded.asyncify.mjs',
   './model/model.onnx',
   './model/taxonomy.json',
 ];
@@ -51,8 +56,19 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   // Never intercept cross-origin (e.g. GBIF pages open in a new tab, image fetches later).
-  if (url.origin !== location.origin) return;
+  if (url.origin !== location.origin || e.request.method !== 'GET') return;
   e.respondWith(
-    caches.match(e.request).then((hit) => hit || fetch(e.request))
+    caches.match(e.request).then((hit) => {
+      if (hit) return hit;
+      // Cache-on-fetch: the first run pulls one big .wasm variant; store it so the app is
+      // fully offline afterwards, without precaching all 59 MB of variants up front.
+      return fetch(e.request).then((res) => {
+        if (res.ok && res.type === 'basic') {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(e.request, copy));
+        }
+        return res;
+      });
+    })
   );
 });

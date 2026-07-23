@@ -15,6 +15,10 @@
 }
 
 * { box-sizing: border-box; }
+/* `.screen` sets display:flex, which would otherwise override the `hidden` attribute's
+   default display:none — so the hidden result screen would render under the home screen
+   (that was the stray "Back" button at the bottom). Force hidden to win. */
+[hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; }
 body {
   background: var(--bg); color: var(--fg);
