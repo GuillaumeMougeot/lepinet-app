@@ -63,9 +63,18 @@ Hard requirements — the app assumes all of these:
 4. **Preprocessing the app performs:** shorter-side resize to `S` + center crop. If your model was
    trained with a different validation transform, either retrain to match or expect a small
    accuracy drop (see `lepinet/dev/041` for why this specific transform).
-5. **ONNX Runtime Web compatibility:** the op set must be one ORT Web implements. In particular
-   **do not use dynamic int8 quantization** — it emits `ConvInteger`/`MatMulInteger`, which ORT
-   Web supports on no backend. Use fp32, fp16, or **static QDQ int8** (§4).
+5. **ONNX Runtime Web compatibility:** the op set must be one ORT Web implements on the target
+   devices. This is the trickiest constraint:
+   - **fp32 always works** — the safe default (v1 ships fp32 for exactly this reason).
+   - **Dynamic int8 never works** — it emits `ConvInteger`/`MatMulInteger`, unsupported on every
+     ORT Web backend (fails with *"Could not find an implementation for ConvInteger"*).
+   - **Static QDQ int8** (§4) is smaller (~3.5×) and *should* work (only `QuantizeLinear`/
+     `DequantizeLinear` + float `Conv`), but has been observed to fail at session creation on
+     some devices (a raw numeric WASM error) — **validate it in a real browser on your target
+     devices before shipping it as primary.** Keep fp32 as a same-origin `fallback` if you do.
+   - **fp16** (~2×) is untested here and risky for this model — the cosine head (`normalize` +
+     `acos`) is fp16-sensitive; if you try it, keep the head fp32 via the converter's op
+     block-list and validate.
 
 ### `taxonomy.json`
 

@@ -1,12 +1,8 @@
 // Service worker: makes Lepinet installable and fully offline.
 //
-// Strategy: precache the app shell + model bundle + ORT runtime on install, then serve
-// cache-first (this is a static app whose only "data" is the bundled model, so freshness is a
-// deploy-time concern, not a runtime one). Bumping CACHE on each deploy evicts the old set.
-//
-// The model (~14 MB) and the ORT wasm (~23 MB) dominate the precache; that is the deliberate
-// cost of offline inference, and it is why they live behind an explicit install step the user
-// triggers by adding the app to their home screen.
+// Strategy: precache the small shell on install; cache the heavy assets (model ~54 MB, ORT
+// .wasm 12–25 MB) on first fetch. Cache-first thereafter — a static app whose only "data" is the
+// bundled model, so freshness is a deploy-time concern (bump CACHE) not a runtime one.
 
 const CACHE = 'lepinet-v8';
 

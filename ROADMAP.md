@@ -64,6 +64,17 @@ config-driven bundle already supports shipping multiple models; this is a data-p
 
 ## Model size / efficiency
 
+### [next] Make a sub-54 MB model actually load in ORT Web
+v1 ships **fp32 (54 MB)** because it's the only format confirmed to load on the test devices.
+Static-QDQ int8 (15 MB) exported and verified `ConvInteger`-free, but threw a raw numeric WASM
+error at session creation on a real device — so the size win is stranded until we can validate a
+browser-runnable small format. The blocker is **in-browser testing** (no JS toolchain / browser
+automation on the build box yet). Once that exists, work the options below in order:
+per-tensor (not per-channel) static QDQ → fp16-with-fp32-head → custom minimal ORT build.
+This is the highest-impact *product* item after the app is otherwise solid — 54 MB is a heavy
+first download.
+
+
 ### [later] fp16 variant
 27 MB, no quantization-op pitfalls. Risk: the cosine head (F.normalize + acos) is fp16-sensitive
 (it's why training runs the head in fp32) — would need the head kept fp32 via the float16
