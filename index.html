@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#1b6b4a" />
+  <title>Lepinet — moth &amp; butterfly ID</title>
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" href="./assets/icon.svg" />
+  <link rel="apple-touch-icon" href="./assets/icon-192.png" />
+  <link rel="stylesheet" href="./src/style.css" />
+</head>
+<body>
+  <!-- HOME -->
+  <main id="home" class="screen">
+    <header class="home-head">
+      <img class="logo" src="./assets/icon.svg" alt="" width="72" height="72" />
+      <h1>Lepinet</h1>
+      <p class="tagline">Identify a moth or butterfly from a photo — species, genus, and family.
+        Runs entirely on your device; your photos never leave your phone.</p>
+    </header>
+
+    <button id="capture-btn" class="capture" disabled>
+      <span class="capture-icon" aria-hidden="true">📷</span>
+      <span>Take or choose a photo</span>
+    </button>
+    <input id="file-input" type="file" accept="image/*" capture="environment" hidden />
+
+    <p id="status" class="status"></p>
+
+    <footer class="home-foot">
+      <a href="https://github.com/GuillaumeMougeot/lepinet-app" target="_blank" rel="noopener">
+        Learn more &amp; give feedback →</a>
+      <p class="disclaimer">Predictions can be wrong. Not for conservation, pest, or toxicity decisions.</p>
+    </footer>
+  </main>
+
+  <!-- RESULT -->
+  <main id="result" class="screen" hidden>
+    <button id="back-btn" class="back">← Back</button>
+    <div id="preview" class="preview"></div>
+    <p id="result-status" class="status"></p>
+    <div id="predictions" class="predictions"></div>
+    <p id="timing" class="timing"></p>
+  </main>
+
+  <script type="module" src="./src/app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
+    }
+  </script>
+</body>
+</html>
